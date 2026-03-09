@@ -18,19 +18,34 @@ npm run build
 ## Usage
 
 ```bash
-node dist/index.js <path-to-svelte-project>
+node dist/index.js [path-to-svelte-project]
 ```
+
+The project path is optional. If omitted, use the `load_project` tool at runtime to set it.
 
 ### Claude Code MCP config
 
-Add to your Claude Code settings:
+#### Windows
+
+```json
+{
+  "mcpServers": {
+    "svelte-ls": {
+      "command": "cmd",
+      "args": ["/c", "node", "F:\\Shared\\SvelteLS.MCP\\dist\\index.js", "F:\\path\\to\\svelte\\project"]
+    }
+  }
+}
+```
+
+#### macOS / Linux
 
 ```json
 {
   "mcpServers": {
     "svelte-ls": {
       "command": "node",
-      "args": ["F:\\Shared\\SvelteLS.MCP\\dist\\index.js", "F:\\path\\to\\svelte\\project"]
+      "args": ["/path/to/SvelteLS.MCP/dist/index.js", "/path/to/svelte/project"]
     }
   }
 }
