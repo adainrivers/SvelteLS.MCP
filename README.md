@@ -36,6 +36,27 @@ Add to your Claude Code settings:
 }
 ```
 
+## Standalone Executable (SEA)
+
+Build a single `.exe` that embeds both the MCP server and svelteserver. Requires `node` on PATH at runtime (to spawn svelteserver).
+
+```bash
+npm run build:sea
+```
+
+Produces `dist/svelte-ls-mcp.exe`. MCP config:
+
+```json
+{
+  "mcpServers": {
+    "svelte-ls": {
+      "command": "F:\\Shared\\SvelteLS.MCP\\dist\\svelte-ls-mcp.exe",
+      "args": ["F:\\path\\to\\svelte\\project"]
+    }
+  }
+}
+```
+
 ## Tools
 
 ### Navigation
@@ -67,6 +88,7 @@ Add to your Claude Code settings:
 - `outgoing_calls` - Find all calls from a function/method
 
 ### Lifecycle
+- `load_project` - Load a Svelte project by its root directory
 - `restart_lsp` - Restart the Svelte language server
 
 ### Svelte-specific

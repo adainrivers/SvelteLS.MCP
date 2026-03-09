@@ -12,12 +12,12 @@ import { registerSvelteTools } from "./tools/svelte.js";
 import { resolve } from "node:path";
 
 async function main(): Promise<void> {
-  // Parse project root from CLI args
+  // Parse project root from CLI args (optional - can be set later via load_project)
   const projectRoot = process.argv[2]
     ? resolve(process.argv[2])
-    : process.cwd();
+    : undefined;
 
-  console.error(`[svelte-ls-mcp] Project root: ${projectRoot}`);
+  console.error(`[svelte-ls-mcp] Project root: ${projectRoot ?? "(none - use load_project tool)"}`);
 
   // Create LSP client
   const lsp = new LspClient({ projectRoot });
@@ -38,9 +38,13 @@ async function main(): Promise<void> {
   registerLifecycleTools(mcpServer, lsp);
   registerSvelteTools(mcpServer, lsp);
 
-  // Start LSP client (spawns svelteserver)
-  await lsp.start();
-  console.error("[svelte-ls-mcp] svelteserver started");
+  // Start LSP client only if project root was provided
+  if (projectRoot) {
+    await lsp.start();
+    console.error("[svelte-ls-mcp] svelteserver started");
+  } else {
+    console.error("[svelte-ls-mcp] waiting for load_project call");
+  }
 
   // Connect MCP transport (stdio)
   const transport = new StdioServerTransport();

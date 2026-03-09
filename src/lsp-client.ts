@@ -1,7 +1,8 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { extname, basename } from "node:path";
+import { existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { extname, basename, join } from "node:path";
+import { tmpdir } from "node:os";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import {
   createMessageConnection,
@@ -21,7 +22,7 @@ import {
 } from "vscode-languageserver-protocol";
 
 export interface LspClientOptions {
-  projectRoot: string;
+  projectRoot?: string;
   timeoutMs?: number;
 }
 
@@ -36,8 +37,20 @@ export class LspClient {
   >();
   private serverCapabilities: InitializeResult["capabilities"] | null = null;
 
-  readonly projectRoot: string;
+  projectRoot: string | undefined;
   readonly timeoutMs: number;
+
+  get isProjectLoaded(): boolean {
+    return this.projectRoot != null && this.connection != null;
+  }
+
+  private requireProject(): void {
+    if (!this.projectRoot || !this.connection) {
+      throw new Error(
+        "No project loaded. Call the load_project tool first."
+      );
+    }
+  }
 
   constructor(options: LspClientOptions) {
     this.projectRoot = options.projectRoot;
@@ -50,7 +63,9 @@ export class LspClient {
     const serverPath = resolveSvelteServer();
     console.error(`[svelteserver] resolved: ${serverPath}`);
 
-    this.process = spawn(process.execPath, [serverPath, "--stdio"], {
+    // In SEA mode, process.execPath is the SEA exe - use node from PATH instead
+    const nodeExe = isSea() ? "node" : process.execPath;
+    this.process = spawn(nodeExe, [serverPath, "--stdio"], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
     });
@@ -108,12 +123,13 @@ export class LspClient {
   }
 
   private async initializeLsp(): Promise<void> {
-    const rootUri = pathToFileURL(this.projectRoot).href;
+    const projectRoot = this.projectRoot!;
+    const rootUri = pathToFileURL(projectRoot).href;
 
     const initParams: InitializeParams = {
       processId: process.pid,
       rootUri,
-      rootPath: this.projectRoot,
+      rootPath: projectRoot,
       capabilities: {
         textDocument: {
           hover: {
@@ -189,7 +205,7 @@ export class LspClient {
       workspaceFolders: [
         {
           uri: rootUri,
-          name: basename(this.projectRoot),
+          name: basename(projectRoot),
         },
       ],
       initializationOptions: {
@@ -223,7 +239,7 @@ export class LspClient {
     params: any,
     timeoutOverride?: number
   ): Promise<T> {
-    if (!this.connection) throw new Error("LSP connection not established");
+    this.requireProject();
 
     const timeout = timeoutOverride ?? this.timeoutMs;
     const controller = new AbortController();
@@ -246,7 +262,7 @@ export class LspClient {
         (cancellationToken as any).isCancellationRequested = true;
       });
 
-      return await this.connection.sendRequest(
+      return await this.connection!.sendRequest(
         method,
         params,
         cancellationToken as any
@@ -257,8 +273,8 @@ export class LspClient {
   }
 
   async notify(method: string, params: any): Promise<void> {
-    if (!this.connection) throw new Error("LSP connection not established");
-    await this.connection.sendNotification(method, params);
+    this.requireProject();
+    await this.connection!.sendNotification(method, params);
   }
 
   async ensureDocumentOpen(filePath: string): Promise<string> {
@@ -418,6 +434,18 @@ export class LspClient {
   }
 
   // -- Lifecycle --
+
+  async loadProject(projectRoot: string): Promise<void> {
+    console.error(`[svelteserver] loading project: ${projectRoot}`);
+    if (this.connection) {
+      await this.stop();
+    }
+    this.projectRoot = projectRoot;
+    this.openDocuments.clear();
+    this.diagnosticsCache.clear();
+    await this.start();
+    console.error(`[svelteserver] project loaded: ${projectRoot}`);
+  }
 
   async restart(): Promise<void> {
     console.error("[svelteserver] restarting...");
@@ -662,14 +690,51 @@ function isIdentifierChar(c: string): boolean {
   return /[\w$]/.test(c);
 }
 
+// -- SEA (Single Executable Application) support --
+
+let _isSea: boolean | undefined;
+
+function isSea(): boolean {
+  if (_isSea === undefined) {
+    try {
+      // eval("require") avoids esbuild resolving this + works in CJS bundle
+      // In ESM (tsc build), require is undefined so eval throws -> _isSea = false
+      const sea = eval("require")("node:sea");
+      _isSea = sea.isSea();
+    } catch {
+      _isSea = false;
+    }
+  }
+  return _isSea!;
+}
+
+function extractSeaAsset(key: string): string {
+  // Only called in SEA mode where CJS require is available
+  const sea = eval("require")("node:sea");
+  const dir = join(tmpdir(), "svelte-ls-mcp");
+  mkdirSync(dir, { recursive: true });
+  const outPath = join(dir, key);
+  if (!existsSync(outPath)) {
+    const content = sea.getAsset(key, "utf8");
+    writeFileSync(outPath, content);
+  }
+  return outPath;
+}
+
 /**
  * Resolve the path to the svelteserver entry script.
- * Uses the locally installed svelte-language-server package.
+ * In SEA mode, extracts the embedded svelteserver bundle to a temp dir.
+ * Otherwise, uses the locally installed svelte-language-server package.
  */
 function resolveSvelteServer(): string {
   // Allow env override
   const envPath = process.env["SVELTELS_SERVER_PATH"];
   if (envPath && existsSync(envPath)) return envPath;
+
+  // SEA mode: extract embedded svelteserver asset
+  if (isSea()) {
+    return extractSeaAsset("svelteserver-bundle.cjs");
+  }
 
   // Use the local node_modules package
   const localPath = new URL(
