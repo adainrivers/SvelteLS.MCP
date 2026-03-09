@@ -1,9 +1,0 @@
-{
-  "main": "dist/bundle.cjs",
-  "output": "dist/svelte-ls-mcp.exe",
-  "disableExperimentalSEAWarning": true,
-  "useCodeCache": true,
-  "assets": {
-    "svelteserver-bundle.cjs": "dist/svelteserver-bundle.cjs"
-  }
-}
