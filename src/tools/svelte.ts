@@ -31,9 +31,7 @@ export function registerSvelteTools(
         const prep = await prepareDocumentRequest(lsp, filePath);
         if ("error" in prep) return textResult(prep.error);
 
-        const result = await lsp.request("$/getCompiledCode", {
-          uri: prep.uri,
-        });
+        const result = await lsp.request("$/getCompiledCode", prep.uri);
 
         if (!result) {
           return textResult(
@@ -83,9 +81,7 @@ export function registerSvelteTools(
       try {
         const uri = pathToUri(filePath);
 
-        const result = await lsp.request("$/getComponentReferences", {
-          uri,
-        });
+        const result = await lsp.request("$/getComponentReferences", uri);
 
         if (!result || !Array.isArray(result) || result.length === 0) {
           return textResult(
@@ -125,9 +121,7 @@ export function registerSvelteTools(
       try {
         const uri = pathToUri(filePath);
 
-        const result = await lsp.request("$/getFileReferences", {
-          uri,
-        });
+        const result = await lsp.request("$/getFileReferences", uri);
 
         if (!result || !Array.isArray(result) || result.length === 0) {
           return textResult(
